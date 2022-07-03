@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
+#include <unistd.h>
+
 #include "shadowvpn.h"
 
 static const char *help_message =
@@ -61,8 +63,7 @@ static int parse_config_file(shadowvpn_args_t *args, const char *filename) {
 
   fp = fopen(filename, "rb");
   if (fp == NULL) {
-    err("fopen");
-    errf("Can't open config file: %s", filename);
+    errf("fopen: Can't open config file: %s", filename);
     return -1;
   }
   while ((line = fgets(buf, len, fp))) {
@@ -77,8 +78,9 @@ static int parse_config_file(shadowvpn_args_t *args, const char *filename) {
       errf("line %d too long in %s", lineno, filename);
       return -1;
     }
-    if (*line == 0 || *line == '#')
+    if (*line == 0 || *line == '#') {
       continue;
+    }
     sp_pos = strchr(line, '=');
     if (!sp_pos) {
       errf("%s:%d: \"=\" is not found in this line: %s", filename, lineno,
@@ -108,12 +110,13 @@ static int parse_config_file(shadowvpn_args_t *args, const char *filename) {
     errf("password not set in config file");
     return -1;
   }
-#ifdef TARGET_WIN32
+
+  #ifdef TARGET_WIN32
   if (!args->tun_ip) {
     errf("tunip not set in config file");
     return -1;
   }
-#endif
+  #endif
   return 0;
 }
 
@@ -188,8 +191,16 @@ static void load_default_args(shadowvpn_args_t *args) {
   args->intf = "tun0";
 #endif
   args->mtu = 1440;
-  args->pid_file = "/var/run/shadowvpn.pid";
-  args->log_file = "/var/log/shadowvpn.log";
+  char *pid_file = "/var/run/shadowvpn.pid";
+  char *log_file = "/var/run/shadowvpn.log";
+
+  if (access(pid_file, F_OK) == 0 && access(log_file, F_OK) == 0) {
+      args->pid_file = "/var/run/shadowvpn.pid";
+      args->log_file = "/var/log/shadowvpn.log";
+  } else {
+    err("unable to open pid or log file");
+    return;
+  }
 #ifdef TARGET_WIN32
   args->tun_mask = 24;
   args->tun_port = TUN_DELEGATE_PORT;
@@ -223,8 +234,9 @@ int args_parse(shadowvpn_args_t *args, int argc, char **argv) {
         print_help();
     }
   }
-  if (!args->conf_file)
+  if (!args->conf_file) {
     print_help();
+  }
   load_default_args(args);
   return parse_config_file(args, args->conf_file);
 }
